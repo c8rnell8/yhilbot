@@ -1,0 +1,171 @@
+{
+  "Meta": {
+    "title": "yhilbot — Discord media editor",
+    "description": "GIFs, captions, and a real video editor inside Discord. ffmpeg-powered. No watermarks, no upsells."
+  },
+  "Nav": {
+    "home": "Home",
+    "status": "Status",
+    "dashboard": "Dashboard",
+    "editor": "Web editor",
+    "addToDiscord": "Add to Discord",
+    "github": "Source",
+    "languageLabel": "Language"
+  },
+  "Hero": {
+    "eyebrow": "Discord media bot · v5.2",
+    "title": "Cut, caption, render — without leaving the chat.",
+    "subtitle": "Five slash commands. ffmpeg under the hood. A real timeline-based editor that fits Discord's 25 MB limit on the first try, not the fifth.",
+    "ctaPrimary": "Add to Discord",
+    "ctaSecondary": "Try /edit in the browser",
+    "statusOnline": "Online",
+    "statusOffline": "Offline",
+    "statusChecking": "Checking…"
+  },
+  "Commands": {
+    "title": "Five commands. Zero clutter.",
+    "subtitle": "Each slash command does one thing well. Nothing else.",
+    "items": {
+      "gif": {
+        "name": "/gif",
+        "summary": "Video → animated WebP. Image → GIF.",
+        "detail": "Auto-tunes resolution, FPS, and quality so the result fits Discord's 25 MB cap on the first attempt — even for 5-minute clips."
+      },
+      "caption": {
+        "name": "/caption",
+        "summary": "Top-text-bottom-image meme captions.",
+        "detail": "Impact font, white background, hard contrast. Up to four parallel jobs so you don't queue behind GIF renders."
+      },
+      "edit": {
+        "name": "/edit",
+        "summary": "QUAD timeline editor: split, text overlays, speed, FPS, undo / redo.",
+        "detail": "Click-to-edit cursor, in-place modals for precise timestamps, share-code for read-only viewers, persistent sessions across restarts."
+      },
+      "stats": {
+        "name": "/stats",
+        "summary": "Owner-only telemetry.",
+        "detail": "Render counts, queue depth, CPU / RAM, disk, log size — everything you need to know if your VPS is on fire."
+      },
+      "help": {
+        "name": "/help",
+        "summary": "Self-documenting command list.",
+        "detail": "Reads the same metadata that Discord uses, so it never drifts out of sync with the real implementation."
+      }
+    }
+  },
+  "Features": {
+    "title": "Engineered, not duct-taped.",
+    "subtitle": "v5.2 fixed seven critical bugs from the v5.1 audit. The list below is the reason.",
+    "items": {
+      "security": {
+        "title": "No filtergraph injection",
+        "body": "Overlay text is piped through drawtext=textfile= so user input is never parsed as ffmpeg syntax. Color values are validated against a whitelist + hex regex."
+      },
+      "concurrency": {
+        "title": "Render concurrency control",
+        "body": "A configurable semaphore caps simultaneous renders. Two users hitting Render at once no longer melts the box."
+      },
+      "cache": {
+        "title": "Smart render cache",
+        "body": "Cache key is derived from the timeline signature without the cursor position, so scrubbing the preview never invalidates a cached render."
+      },
+      "sessions": {
+        "title": "Persistent sessions",
+        "body": "SQLite WAL with thread-local connections. Restart the bot and your timeline survives — keyed by the real message ID, not a one-shot interaction token."
+      },
+      "i18n": {
+        "title": "Three languages",
+        "body": "This site speaks English, українську, and русский. The bot itself stays neutral so you don't have to teach Discord how to spell your name."
+      },
+      "open": {
+        "title": "Open source, MIT",
+        "body": "Read the code, fork it, send a pull request. No telemetry, no analytics, no hidden API keys."
+      }
+    }
+  },
+  "Status": {
+    "title": "Live status",
+    "subtitle": "Direct read from the running bot. No proxies, no caches longer than 5 seconds.",
+    "metrics": {
+      "uptime": "Uptime",
+      "queue": "Queue depth",
+      "sessions": "Active sessions",
+      "renders": "Renders today",
+      "cpu": "CPU",
+      "memory": "Memory"
+    },
+    "counters": {
+      "title": "Lifetime counters",
+      "gifOk": "GIFs / WebPs",
+      "captionOk": "Captions",
+      "editOk": "Edits"
+    },
+    "lastUpdate": "Last update: {when}",
+    "demoNotice": "Demo data — wire the bot's /api/status endpoint to make this live."
+  },
+  "Dashboard": {
+    "loginRequired": {
+      "title": "Owner area",
+      "body": "Sign in with Discord to access render history, server-side limits, and audit logs.",
+      "cta": "Sign in with Discord",
+      "note": "Sign-in is gated by the OWNER_ID environment variable on the bot side. Only that account is granted dashboard access."
+    },
+    "comingSoon": {
+      "title": "Dashboard preview",
+      "body": "Discord OAuth is scaffolded but not wired in this commit. The page below is what it will show once authentication lands.",
+      "cta": "View design preview"
+    },
+    "metrics": {
+      "title": "Today",
+      "renders": "Renders",
+      "uptime": "Uptime",
+      "errors": "Errors",
+      "queue": "Queue"
+    },
+    "history": {
+      "title": "Recent renders",
+      "user": "User",
+      "duration": "Duration",
+      "size": "Size",
+      "status": "Status",
+      "when": "When",
+      "ok": "Delivered",
+      "fail": "Failed",
+      "cancel": "Cancelled"
+    },
+    "limits": {
+      "title": "Live limits",
+      "concurrentRenders": "Concurrent renders",
+      "concurrentConverts": "Concurrent /gif converts",
+      "maxInputMb": "Max input (MB)",
+      "outputLimitMb": "Output limit (MB)",
+      "save": "Save"
+    }
+  },
+  "Editor": {
+    "title": "Web editor",
+    "subtitle": "The /edit command, in your browser. Same ffmpeg pipeline, same 25 MB target.",
+    "comingSoon": "Coming next iteration",
+    "explainer": "The desktop-class editor is being ported from the Discord-side QUAD UI. This page reserves the route, the layout, and the keyboard shortcuts. The render service runs on the same machine as the bot — not in your browser — so 4K input doesn't melt your laptop.",
+    "demo": {
+      "title": "What you'll get",
+      "items": [
+        "Drag-to-trim timeline with frame-accurate cursor",
+        "Text overlays with safe color picker (no filtergraph injection)",
+        "Speed, FPS, resolution presets that survive page reloads",
+        "Live size prediction before you hit render",
+        "Share-code links — read-only timeline previews for your team"
+      ]
+    },
+    "back": "Back to home"
+  },
+  "Footer": {
+    "tagline": "Built with ffmpeg, discord.py, and an opinion about defaults.",
+    "rights": "MIT licensed. No warranty, no telemetry.",
+    "links": {
+      "code": "Source code",
+      "issues": "Report a bug",
+      "license": "License"
+    }
+  }
+}
