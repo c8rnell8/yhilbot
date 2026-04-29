@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
+ignore = [
+    "E501",    # line-too-long: разметка/SQL/ffmpeg-строки бывают длинными
+    "E701",    # multiple statements on one line (`try: ... except: ...` стиль из исходника)
+    "E702",    # multiple statements on one line (semicolon)
+    "B008",    # function-call-in-default-argument (asyncio.Lock() в dataclass field)
+    "ASYNC240", # `os.path.*` в async — для бота на discord.py это норма (быстрый stat)
+    "ASYNC230", # `open()` в async — то же самое, файлы маленькие
+    "ASYNC110", # `while True: await sleep` — это паттерн `queue_wait`/`cleanup_loop`
+]
+
+[tool.ruff.lint.per-file-ignores]
+"bot.py" = ["F401"]  # entry point may import for side effects
