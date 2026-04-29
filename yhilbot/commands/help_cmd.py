@@ -35,6 +35,18 @@ async def help_cmd(interaction: discord.Interaction) -> None:
         ),
         inline=False,
     )
+    embed.add_field(
+        name="/webedit <media>",
+        value=(
+            "Открывает видео в **веб-редакторе** на yhilyanty-site:\n"
+            "• Trim handles на таймлайне (drag in/out)\n"
+            "• Текст-overlay (drag-position, цвет, шрифт)\n"
+            "• Blur-region, crop, скорость 0.25–4×\n"
+            "• Экспорт MP4 / GIF / WebM\n"
+            "• По нажатию **Готово** бот сам пришлёт результат в канал."
+        ),
+        inline=False,
+    )
     embed.add_field(name="/stats", value="Статистика бота (только для владельца).", inline=False)
     embed.set_footer(
         text=(

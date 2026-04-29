@@ -45,3 +45,7 @@ editor.db-shm
 # Misc
 *.bak
 *.tmp
+
+# Web (Next.js trial site under /web — has its own gitignore)
+web/.next/
+web/node_modules/

@@ -38,6 +38,13 @@ CACHE_TTL_SEC: int = int(os.getenv("CACHE_TTL_SEC", "7200"))
 # ── Состояние GPU (выставляется в on_ready после ffmpeg -encoders) ────────────
 GPU_AVAILABLE: bool = False
 
+# ── Веб-редактор (yhilyanty-site) ─────────────────────────────────────────────
+WEB_EDITOR_URL: str = os.getenv("WEB_EDITOR_URL", "").rstrip("/")
+WEB_EDITOR_TOKEN: str = os.getenv("WEB_EDITOR_TOKEN", "")
+WEB_EDITOR_LOCALE: str = os.getenv("WEB_EDITOR_LOCALE", "ua")
+WEB_EDITOR_POLL_SEC: float = float(os.getenv("WEB_EDITOR_POLL_SEC", "4"))
+WEB_EDITOR_TIMEOUT_SEC: int = int(os.getenv("WEB_EDITOR_TIMEOUT_SEC", "1800"))
+
 
 def _parse_guild_ids() -> list[int]:
     raw = os.getenv("GUILD_IDS", os.getenv("GUILD_ID", ""))
