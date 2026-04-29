@@ -6,7 +6,7 @@ Public site for [yhilbot](../README.md) — landing, live status, owner dashboar
 
 - **Next.js 16** (App Router, RSC by default)
 - **Tailwind v4** + **Geist Sans / Geist Mono**
-- **next-intl 4** — three locales: `en`, `uk`, `ru`
+- **next-intl 4** — three locales: `en`, `ua`, `ru`
 - **Framer Motion** for spring-physics motion
 - **Phosphor Icons** (no emojis anywhere — see [taste-skill](https://github.com/Leonxlnx/taste-skill))
 

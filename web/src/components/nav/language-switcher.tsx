@@ -9,13 +9,13 @@ import { routing, type Locale } from "@/i18n/routing";
 
 const LABELS: Record<Locale, string> = {
   en: "EN",
-  uk: "UK",
+  ua: "UA",
   ru: "RU",
 };
 
 const LONG_LABELS: Record<Locale, string> = {
   en: "English",
-  uk: "Українська",
+  ua: "Українська",
   ru: "Русский",
 };
 
