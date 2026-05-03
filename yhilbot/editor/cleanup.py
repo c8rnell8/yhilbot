@@ -27,7 +27,14 @@ async def editor_cleanup_loop() -> None:
                 sess = active_sessions.pop(mid, None)
                 if sess:
                     if sess.render_task and not sess.render_task.done():
+                        # cancel_flag — кооперативный сигнал; render проверяет
+                        # его между readline()'ами. Если ffmpeg застрял и не
+                        # отдаёт прогресс, readline блокирует навсегда. Поэтому
+                        # дополнительно ставим asyncio-cancel — он прерывает
+                        # readline через CancelledError, render корректно
+                        # убъёт subprocess в своём finally-блоке.
                         sess.cancel_flag.set()
+                        sess.render_task.cancel()
                     if sess.input_path and os.path.exists(sess.input_path):
                         try:
                             os.remove(sess.input_path)

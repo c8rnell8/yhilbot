@@ -145,14 +145,17 @@ async def background_render(sess: EditorSession, interaction: discord.Interactio
         tl_dict = tl_to_dict(sess.timeline)
     tl_for_calc = tl_from_dict(tl_dict)
 
-    # Кэш по сигнатуре без cursor
+    # Кэш по сигнатуре без cursor. Если кэш есть И отправка прошла — выходим.
+    # Если отправка кэша провалилась (interaction expired + channel.send упал) —
+    # НЕ возвращаемся, а проваливаемся вниз и рендерим заново. Иначе пользователь
+    # видит "🚀 Рендер запущен" и никогда не получает результат.
     ck = cache_key(render_signature(tl_for_calc))
     cached_out = cache_path(ck, ext="webp")
     if os.path.exists(cached_out):
+        sent = False
         try:
             file = discord.File(cached_out, filename="result.webp")
             msg = "✅ Готово (из кэша)!"
-            sent = False
             try:
                 if not interaction.is_expired():
                     await interaction.followup.send(msg, file=file)
@@ -161,12 +164,12 @@ async def background_render(sess: EditorSession, interaction: discord.Interactio
                     await channel.send(f"{user.mention} {msg}", file=file)
                     sent = True
             except Exception as e:
-                log.warning(f"render: cache-hit send failed: {e}")
-            if sent:
-                stats.inc("edit_ok")
+                log.warning(f"render: cache-hit send failed, falling through to fresh render: {e}")
         except Exception as e:
-            log.warning(f"render: cache-hit failed: {e}")
-        return
+            log.warning(f"render: cache-hit prep failed, falling through: {e}")
+        if sent:
+            stats.inc("edit_ok")
+            return
 
     # Готовим overlay-файлы (один раз на рендер; чистим в finally)
     overlay_files: list[str] = []
@@ -268,8 +271,23 @@ async def background_render(sess: EditorSession, interaction: discord.Interactio
                 try:
                     # Параллельно: парсим прогресс из stdout, дренируем stderr.
                     stderr_task = asyncio.create_task(_drain_stderr(proc))
-                    await parse_progress(proc)
-                    await proc.wait()
+                    try:
+                        await parse_progress(proc)
+                        await proc.wait()
+                    finally:
+                        # Если корутину отменили (через task.cancel() в cleanup
+                        # или при ребуте), proc остаётся живым ребёнком процесса
+                        # бота. Гарантированно убиваем его, иначе в системе
+                        # копятся zombie-ffmpeg.
+                        if proc.returncode is None:
+                            try:
+                                proc.kill()
+                            except Exception:
+                                pass
+                            try:
+                                await proc.wait()
+                            except Exception:
+                                pass
                     err_bytes = await stderr_task
                     if proc.returncode == 0 and os.path.exists(out):
                         fsize = os.path.getsize(out)
