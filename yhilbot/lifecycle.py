@@ -18,9 +18,35 @@ from .editor.models import active_sessions
 from .ffmpeg_helpers import detect_gpu
 from .logging_setup import log
 
+_signal_handlers_installed: bool = False
+
+
+def _install_signal_handlers_on_running_loop() -> None:
+    """Register signal handlers on the loop that's currently running.
+
+    discord.py's Client.run() wraps asyncio.run() which creates a fresh loop,
+    so we must register inside on_ready (or any coroutine running on that loop)
+    rather than before client.run().
+    """
+    global _signal_handlers_installed
+    if _signal_handlers_installed:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(_async_shutdown()))
+        except (NotImplementedError, RuntimeError):
+            # Windows or signal-handlers not supported on this loop; skip.
+            pass
+    _signal_handlers_installed = True
+
 
 @client.event
 async def on_ready() -> None:
+    _install_signal_handlers_on_running_loop()
     config.set_gpu_available(await detect_gpu())
     try:
         psutil.Process(os.getpid()).cpu_percent(interval=None)
@@ -73,10 +99,11 @@ async def _async_shutdown() -> None:
 
 
 def install_signal_handlers() -> None:
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(_async_shutdown()))
-        except (NotImplementedError, RuntimeError):
-            # Windows / loop ещё не запущен — fallback на sync handler.
-            signal.signal(sig, lambda *_: asyncio.run(_async_shutdown()))
+    """Compat shim: kept for backwards-compatibility with bot.py.
+
+    Real signal-handler registration happens inside ``on_ready`` once the
+    discord.py event loop is running (see
+    ``_install_signal_handlers_on_running_loop``). Calling this before
+    ``client.run()`` is a no-op now.
+    """
+    return None

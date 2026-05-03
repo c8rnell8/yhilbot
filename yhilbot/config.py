@@ -11,7 +11,7 @@ load_dotenv(dotenv_path="yhil.env")
 
 # ── Required ──────────────────────────────────────────────────────────────────
 TOKEN: str | None = os.getenv("DISCORD_TOKEN")
-OWNER_ID: int = int(os.getenv("OWNER_ID", "0"))
+OWNER_ID: int = int(os.getenv("OWNER_ID") or "0")
 
 # ── Лимиты ────────────────────────────────────────────────────────────────────
 MAX_INPUT_MB: int = int(os.getenv("MAX_INPUT_MB", "100"))

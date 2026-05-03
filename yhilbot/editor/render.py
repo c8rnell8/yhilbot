@@ -212,9 +212,13 @@ async def background_render(sess: EditorSession, interaction: discord.Interactio
             pass
 
     async def parse_progress(proc: asyncio.subprocess.Process) -> None:
+        # ffmpeg's `-progress pipe:1` emits one key=value per line, so we have
+        # to track out_time_ms and speed across separate reads.
         total_us = total_dur * 1_000_000
         if proc.stdout is None:
             return
+        out_us = 0
+        ffspeed = 0.0
         while True:
             if sess.cancel_flag.is_set():
                 try:
@@ -227,10 +231,18 @@ async def background_render(sess: EditorSession, interaction: discord.Interactio
                 break
             decoded = line.decode(errors="ignore")
             m_t = re.search(r"out_time_ms=(\d+)", decoded)
-            m_s = re.search(r"speed=([\d.]+)x", decoded)
-            if m_t and m_s:
-                out_us = int(m_t.group(1))
-                ffspeed = max(0.01, float(m_s.group(1)))
+            m_s = re.search(r"speed=\s*([\d.]+)x", decoded)
+            if m_t:
+                try:
+                    out_us = int(m_t.group(1))
+                except ValueError:
+                    out_us = 0
+            if m_s:
+                try:
+                    ffspeed = max(0.01, float(m_s.group(1)))
+                except ValueError:
+                    ffspeed = 0.0
+            if out_us > 0 and ffspeed > 0:
                 pct = min(1.0, out_us / total_us) if total_us > 0 else 0.0
                 remaining = max(0.0, (total_us - out_us) / (ffspeed * 1_000_000))
                 await update_progress(pct, remaining)
