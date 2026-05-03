@@ -101,7 +101,7 @@ async def _notify(
     content: str,
     file: discord.File | None = None,
     ephemeral: bool = False,
-) -> None:
+) -> bool:
     """Best-effort notification: prefer channel.send, fall back to followup.
 
     Discord interaction-tokens expire after ~15 min, but our poll loop runs
@@ -109,20 +109,37 @@ async def _notify(
     `interaction.followup.send` падає з 401 — для довгих рендерів треба
     писати у канал безпосередньо. Pings the user explicitly so they still get
     a notification even when the message isn't a reply.
+
+    Returns True if at least one send succeeded, False if both paths failed
+    (e.g. file too large for both channel and followup, or token expired
+    AND no channel access). Caller should use this to drive a fallback
+    such as posting just a download link.
     """
     channel = interaction.channel
     can_channel = channel is not None and hasattr(channel, "send") and not ephemeral
+    last_exc: discord.HTTPException | None = None
     if can_channel:
         try:
             await channel.send(content=content, file=file)  # type: ignore[union-attr]
-            return
+            return True
         except discord.HTTPException as e:
             log.warning("webedit:channel_send_failed err=%s", e)
+            last_exc = e
     # Fallback на followup — працює тільки в перші 15 хв.
     try:
         await interaction.followup.send(content=content, file=file, ephemeral=ephemeral)
+        return True
     except discord.HTTPException as e:
-        log.warning("webedit:followup_send_failed err=%s (token may be expired)", e)
+        log.warning(
+            "webedit:followup_send_failed err=%s (token may be expired)", e
+        )
+        last_exc = e
+    log.warning(
+        "webedit:notify_all_paths_failed last_err=%s (file=%s)",
+        last_exc,
+        "yes" if file else "no",
+    )
+    return False
 
 
 async def _wait_and_deliver(
@@ -177,14 +194,14 @@ async def _wait_and_deliver(
                         f"<@{interaction.user.id}> ✓ Готово — рендер з "
                         f"[веб-редактора]({editor_url})."
                     )
-                    try:
-                        await _notify(interaction, content=content, file=file)
-                    except discord.HTTPException as e:
-                        # Файл, ймовірно, занадто великий — даємо лінк
+                    sent = await _notify(interaction, content=content, file=file)
+                    if not sent:
+                        # Обидва канали (channel.send + followup.send) впали —
+                        # типово через розмір файлу >25MB або інші HTTP помилки.
+                        # Кидаємо просто текстове повідомлення з download-лінкою.
                         log.warning(
-                            "webedit:send_failed_fallback_to_link session=%s err=%s",
+                            "webedit:send_with_file_failed_fallback_to_link session=%s",
                             session_id,
-                            e,
                         )
                         download_url = (
                             f"{config.WEB_EDITOR_URL}/api/editor/sessions/{session_id}/output?dl=1"
