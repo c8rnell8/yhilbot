@@ -119,14 +119,21 @@ def write_overlay_text_file(text: str, message_id: int, idx: int) -> str:
 
 
 def make_temp_overlay_text_file(text: str) -> str:
-    """Альтернатива write_overlay_text_file для одноразовых файлов с авто-именем."""
+    """Альтернатива write_overlay_text_file для одноразовых файлов с авто-именем.
+
+    Чітко розрізняємо два моменти володіння fd:
+      • до `os.fdopen` — fd ще «голий», на помилку треба `os.close(fd)`.
+      • після `os.fdopen` — file-object бере fd у власність і закриє його сам
+        у блоці `with`; повторний `os.close(fd)` дав би EBADF.
+    """
     fd, path = tempfile.mkstemp(prefix="ov_", suffix=".txt", dir=config.OVERLAY_TEXT_DIR)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
+        fobj = os.fdopen(fd, "w", encoding="utf-8")
     except Exception:
         os.close(fd)
         raise
+    with fobj:
+        fobj.write(text)
     return path
 
 

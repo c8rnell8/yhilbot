@@ -9,6 +9,7 @@ from discord import app_commands
 from .. import config
 from ..client import tree
 from ..editor.db import (
+    delete_session,
     find_active_session_for_user,
     init_db,
     load_preset,
@@ -80,6 +81,14 @@ async def edit_cmd(
         # Заменить ключ в active_sessions: убрать старый mid и положить под новым.
         active_sessions.pop(old_mid, None)
         active_sessions[msg.id] = existing
+        # Удаляем старый DB-row, иначе после рестарта бота сессия имеет
+        # orphan по старому message_id, не очищаемый cleanup-loop'ом
+        # (он смотрит только active_sessions). save_session() в update_ui
+        # ниже создаст новую запись с уже актуальным PK.
+        try:
+            await delete_session(old_mid)
+        except Exception as e:
+            log.warning("edit:delete_old_session_failed mid=%s err=%s", old_mid, e)
         await view.update_ui("✅ Продолжайте с того места.")
         return
 

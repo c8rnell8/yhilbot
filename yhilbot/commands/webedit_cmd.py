@@ -95,82 +95,134 @@ async def _download_output(
         return await resp.read()
 
 
+async def _notify(
+    interaction: discord.Interaction,
+    *,
+    content: str,
+    file: discord.File | None = None,
+    ephemeral: bool = False,
+) -> None:
+    """Best-effort notification: prefer channel.send, fall back to followup.
+
+    Discord interaction-tokens expire after ~15 min, but our poll loop runs
+    up to WEB_EDITOR_TIMEOUT_SEC (default 30 min). После 15 хв
+    `interaction.followup.send` падає з 401 — для довгих рендерів треба
+    писати у канал безпосередньо. Pings the user explicitly so they still get
+    a notification even when the message isn't a reply.
+    """
+    channel = interaction.channel
+    can_channel = channel is not None and hasattr(channel, "send") and not ephemeral
+    if can_channel:
+        try:
+            await channel.send(content=content, file=file)  # type: ignore[union-attr]
+            return
+        except discord.HTTPException as e:
+            log.warning("webedit:channel_send_failed err=%s", e)
+    # Fallback на followup — працює тільки в перші 15 хв.
+    try:
+        await interaction.followup.send(content=content, file=file, ephemeral=ephemeral)
+    except discord.HTTPException as e:
+        log.warning("webedit:followup_send_failed err=%s (token may be expired)", e)
+
+
 async def _wait_and_deliver(
     interaction: discord.Interaction, session_id: str, editor_url: str
 ) -> None:
-    """Поллим сайт, при готовности постим результат в канал."""
+    """Поллим сайт, при готовности постим результат в канал.
+
+    Wrapped in a top-level try/except — это fire-and-forget таска,
+    необроблені виключення тут просто логуються, бо повертати їх немає кому
+    (interaction вже відповіли вище).
+    """
     timeout = aiohttp.ClientTimeout(total=config.WEB_EDITOR_TIMEOUT_SEC + 60)
     started = time.time()
     deadline = started + config.WEB_EDITOR_TIMEOUT_SEC
     last_status: str | None = None
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        while time.time() < deadline:
-            try:
-                data = await _poll_status(session, session_id)
-            except Exception as e:
-                log.warning("webedit:poll_error session=%s err=%s", session_id, e)
-                await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
-                continue
-
-            status = str(data.get("status") or "")
-            if status != last_status:
-                log.info("webedit:status session=%s status=%s", session_id, status)
-                last_status = status
-
-            if status == "rendered":
-                output = data.get("output") or {}
-                ext = output.get("ext") or ".mp4"
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            while time.time() < deadline:
                 try:
-                    payload = await _download_output(session, session_id)
+                    data = await _poll_status(session, session_id)
                 except Exception as e:
-                    log.error("webedit:download_failed session=%s err=%s", session_id, e)
-                    await interaction.followup.send(
-                        f"❌ Готовий рендер не вдалося завантажити з сайту: {e}",
-                        ephemeral=True,
+                    log.warning("webedit:poll_error session=%s err=%s", session_id, e)
+                    await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
+                    continue
+
+                status = str(data.get("status") or "")
+                if status != last_status:
+                    log.info("webedit:status session=%s status=%s", session_id, status)
+                    last_status = status
+
+                if status == "rendered":
+                    output = data.get("output") or {}
+                    ext = output.get("ext") or ".mp4"
+                    try:
+                        payload = await _download_output(session, session_id)
+                    except Exception as e:
+                        log.error("webedit:download_failed session=%s err=%s", session_id, e)
+                        await _notify(
+                            interaction,
+                            content=(
+                                f"<@{interaction.user.id}> ❌ Готовий рендер з "
+                                f"[веб-редактора]({editor_url}) не вдалося завантажити: {e}"
+                            ),
+                        )
+                        return
+
+                    file = discord.File(
+                        io.BytesIO(payload), filename=f"yhilbot-{session_id}{ext}"
                     )
+                    content = (
+                        f"<@{interaction.user.id}> ✓ Готово — рендер з "
+                        f"[веб-редактора]({editor_url})."
+                    )
+                    try:
+                        await _notify(interaction, content=content, file=file)
+                    except discord.HTTPException as e:
+                        # Файл, ймовірно, занадто великий — даємо лінк
+                        log.warning(
+                            "webedit:send_failed_fallback_to_link session=%s err=%s",
+                            session_id,
+                            e,
+                        )
+                        download_url = (
+                            f"{config.WEB_EDITOR_URL}/api/editor/sessions/{session_id}/output?dl=1"
+                        )
+                        await _notify(
+                            interaction,
+                            content=(
+                                f"<@{interaction.user.id}> ✓ Готово, але файл завеликий "
+                                f"для каналу. Завантаж напряму: {download_url}"
+                            ),
+                        )
                     return
-                file = discord.File(io.BytesIO(payload), filename=f"yhilbot-{session_id}{ext}")
-                channel = interaction.channel
-                content = (
-                    f"<@{interaction.user.id}> ✓ Готово — рендер з [веб-редактора]({editor_url})."
-                )
-                try:
-                    if channel is not None and hasattr(channel, "send"):
-                        await channel.send(content=content, file=file)
-                    else:
-                        await interaction.followup.send(content=content, file=file)
-                except discord.HTTPException as e:
-                    # Файл, ймовірно, занадто великий для каналу — даємо лінк
-                    log.warning("webedit:send_failed_falling_back session=%s err=%s", session_id, e)
-                    download_url = (
-                        f"{config.WEB_EDITOR_URL}/api/editor/sessions/{session_id}/output?dl=1"
-                    )
-                    await interaction.followup.send(
+
+                if status == "failed":
+                    err = data.get("error") or "unknown"
+                    await _notify(
+                        interaction,
                         content=(
-                            f"<@{interaction.user.id}> ✓ Готово, але файл занадто великий "
-                            f"для Discord-каналу. Завантаж напряму: {download_url}"
+                            f"<@{interaction.user.id}> ❌ Рендер з "
+                            f"[веб-редактора]({editor_url}) впав: `{str(err)[:300]}`"
                         ),
                     )
-                return
+                    return
 
-            if status == "failed":
-                err = data.get("error") or "unknown"
-                await interaction.followup.send(
-                    content=f"❌ Рендер з [веб-редактора]({editor_url}) впав: `{err[:300]}`",
-                    ephemeral=True,
-                )
-                return
+                await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
 
-            await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
-
-        await interaction.followup.send(
-            content=(
-                f"⏱ Час очікування рендера вийшов ({config.WEB_EDITOR_TIMEOUT_SEC}s). "
-                f"Якщо ще не натиснув «Готово» — натисни тут: {editor_url}"
-            ),
-            ephemeral=True,
-        )
+            # ── Таймаут на повний рендер (>30 хв за замовч.) ─────────────────
+            await _notify(
+                interaction,
+                content=(
+                    f"<@{interaction.user.id}> ⏱ Час очікування рендера вийшов "
+                    f"({config.WEB_EDITOR_TIMEOUT_SEC}s). "
+                    f"Якщо ще не натиснув «Готово» — натисни тут: {editor_url}"
+                ),
+            )
+    except Exception as e:
+        # Останній рубіж захисту: ніколи не пропускаємо у asyncio "Task exception was never retrieved".
+        log.exception("webedit:wait_and_deliver crashed session=%s err=%s", session_id, e)
 
 
 @tree.command(
