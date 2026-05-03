@@ -52,12 +52,16 @@ async def caption_cmd(
                 return
             ext = media.filename.rsplit(".", 1)[-1].lower() if "." in media.filename else "png"
             fmt_map = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP", "gif": "PNG"}
+            fmt = fmt_map.get(ext, "PNG")
+            # Output extension must match the produced format, иначе клиент Discord
+            # видит .gif с PNG-байтами и иногда не показывает превью.
+            out_ext = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}.get(fmt, "png")
             res = await asyncio.get_running_loop().run_in_executor(
-                None, draw_caption_sync, img_bytes, text, fmt_map.get(ext, "PNG")
+                None, draw_caption_sync, img_bytes, text, fmt
             )
             try:
                 await interaction.followup.send(
-                    file=discord.File(io.BytesIO(res), filename=f"caption.{ext}")
+                    file=discord.File(io.BytesIO(res), filename=f"caption.{out_ext}")
                 )
                 stats.inc("caption_ok")
                 log.info(f"✅ Caption: {interaction.user} | {text!r}")

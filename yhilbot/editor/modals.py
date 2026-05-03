@@ -54,13 +54,15 @@ class TimeModal(ui.Modal, title="⏱️ Точное время клипа"):
                 "❌ Неверный формат или границы.", ephemeral=True
             )
             return
+        # Отвечаем до взятия блокировки: lock может быть занят рендер-превью
+        # на секунды, а у Discord жёсткий 3‑секундный дедлайн на первый ack.
+        await interaction.response.defer()
         async with self.sess.lock:
             if self.sess.timeline.clips:
                 self.sess.timeline.clips[0].start = s
                 self.sess.timeline.clips[0].end = e
             self.sess.timeline.cursor = s
             push_history(self.sess)
-        await interaction.response.defer()
         await self.view.update_ui_from_modal(interaction, "✅ Время обновлено.")
 
 
@@ -99,12 +101,13 @@ class TextOverlayModal(ui.Modal, title="📝 Добавить текстовое
         # Цвет санитизируется на этапе рендера (sanitize_color), но добавим минимальную
         # нормализацию здесь для UX — белый дефолт.
         color = (self.color_in.value or "white").strip().lower() or "white"
+        # ack до взятия lock — иначе риск 3‑секундного таймаута Discord.
+        await interaction.response.defer()
         async with self.sess.lock:
             self.sess.timeline.overlays.append(
                 Overlay(text=self.text_in.value, start=s, end=e, color=color)
             )
             push_history(self.sess)
-        await interaction.response.defer()
         await self.view.update_ui_from_modal(
             interaction, f"📝 Надпись добавлена: «{self.text_in.value}»"
         )

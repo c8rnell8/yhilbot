@@ -50,8 +50,27 @@ async def edit_cmd(
         return
 
     # ── Авто-восстановление активной сессии того же пользователя ──────────────
-    existing = await find_active_session_for_user(interaction.user.id, interaction.channel_id)
-    if existing and existing.input_path and os.path.exists(existing.input_path):
+    # Сначала ищем живую сессию в памяти: у неё уже могут быть привязаны
+    # render_task / cancel_flag / lock, и пересоздавать объект из БД нельзя —
+    # потеряется связь с фоновым рендером и кнопкой 🛑.
+    existing: EditorSession | None = None
+    for sess_in_mem in active_sessions.values():
+        if (
+            sess_in_mem.user_id == interaction.user.id
+            and sess_in_mem.channel_id == interaction.channel_id
+            and sess_in_mem.input_path
+            and os.path.exists(sess_in_mem.input_path)
+        ):
+            existing = sess_in_mem
+            break
+    if existing is None:
+        # В памяти нет — пробуем поднять из БД (бот мог рестартовать).
+        existing = await find_active_session_for_user(
+            interaction.user.id, interaction.channel_id
+        )
+        if existing and (not existing.input_path or not os.path.exists(existing.input_path)):
+            existing = None
+    if existing is not None:
         old_mid = existing.message_id
         view = EditorView(existing)
         msg = await interaction.followup.send("🔄 Сессия восстановлена.", view=view)
