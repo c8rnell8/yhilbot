@@ -52,12 +52,15 @@ async def edit_cmd(
     # ── Авто-восстановление активной сессии того же пользователя ──────────────
     existing = await find_active_session_for_user(interaction.user.id, interaction.channel_id)
     if existing and existing.input_path and os.path.exists(existing.input_path):
-        active_sessions[existing.message_id] = existing
+        old_mid = existing.message_id
         view = EditorView(existing)
         msg = await interaction.followup.send("🔄 Сессия восстановлена.", view=view)
         existing.channel = interaction.channel
         existing.message = msg
         existing.message_id = msg.id  # перепривязываем сессию к новому followup-сообщению
+        # Заменить ключ в active_sessions: убрать старый mid и положить под новым.
+        active_sessions.pop(old_mid, None)
+        active_sessions[msg.id] = existing
         await view.update_ui("✅ Продолжайте с того места.")
         return
 
@@ -97,7 +100,9 @@ async def edit_cmd(
             tl.quality = pset.get("quality", 75)
 
         # Создаём сессию с временным message_id (interaction.id), потом перебиваем
-        # на реальный ID followup-сообщения после .send().
+        # на реальный ID followup-сообщения после .send(). push_history (и любую
+        # запись в БД) откладываем до момента финализации message_id, иначе в БД
+        # окажется orphaned-строка с ключом interaction.id.
         sess = EditorSession(
             user_id=interaction.user.id,
             channel_id=interaction.channel_id,
@@ -106,7 +111,6 @@ async def edit_cmd(
             duration=duration,
             timeline=tl,
         )
-        push_history(sess)
 
         view = EditorView(sess)
         msg = await interaction.followup.send(
@@ -117,6 +121,10 @@ async def edit_cmd(
         sess.message = msg
         sess.message_id = msg.id  # ключуем именно по message id, а не interaction.id
         active_sessions[sess.message_id] = sess
+
+        # Теперь, когда message_id указывает на реальное сообщение, можно сохранить
+        # начальное состояние в БД через history.
+        push_history(sess)
 
         await view.update_ui("Готово! ✂️ Split, 📝 Текст, ⏱️ Точно, ✅ Рендер.")
 
