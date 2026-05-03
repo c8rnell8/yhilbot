@@ -99,7 +99,8 @@ async def _notify(
     interaction: discord.Interaction,
     *,
     content: str,
-    file: discord.File | None = None,
+    payload: bytes | None = None,
+    filename: str | None = None,
     ephemeral: bool = False,
 ) -> bool:
     """Best-effort notification: prefer channel.send, fall back to followup.
@@ -110,24 +111,44 @@ async def _notify(
     писати у канал безпосередньо. Pings the user explicitly so they still get
     a notification even when the message isn't a reply.
 
+    File handling: takes raw bytes + filename instead of a pre-built
+    `discord.File`, because discord.py consumes the underlying BytesIO on
+    each send (the stream position ends at EOF and a second call would
+    transmit 0 bytes). We construct a fresh `discord.File` per send attempt.
+
     Returns True if at least one send succeeded, False if both paths failed
     (e.g. file too large for both channel and followup, or token expired
     AND no channel access). Caller should use this to drive a fallback
     such as posting just a download link.
     """
+    has_file = payload is not None and filename is not None
+
+    def _fresh_file() -> discord.File | None:
+        if not has_file:
+            return None
+        return discord.File(io.BytesIO(payload), filename=filename)  # type: ignore[arg-type]
+
     channel = interaction.channel
     can_channel = channel is not None and hasattr(channel, "send") and not ephemeral
     last_exc: discord.HTTPException | None = None
     if can_channel:
         try:
-            await channel.send(content=content, file=file)  # type: ignore[union-attr]
+            f = _fresh_file()
+            if f is not None:
+                await channel.send(content=content, file=f)  # type: ignore[union-attr]
+            else:
+                await channel.send(content=content)  # type: ignore[union-attr]
             return True
         except discord.HTTPException as e:
             log.warning("webedit:channel_send_failed err=%s", e)
             last_exc = e
     # Fallback на followup — працює тільки в перші 15 хв.
     try:
-        await interaction.followup.send(content=content, file=file, ephemeral=ephemeral)
+        f = _fresh_file()
+        if f is not None:
+            await interaction.followup.send(content=content, file=f, ephemeral=ephemeral)
+        else:
+            await interaction.followup.send(content=content, ephemeral=ephemeral)
         return True
     except discord.HTTPException as e:
         log.warning(
@@ -137,7 +158,7 @@ async def _notify(
     log.warning(
         "webedit:notify_all_paths_failed last_err=%s (file=%s)",
         last_exc,
-        "yes" if file else "no",
+        "yes" if has_file else "no",
     )
     return False
 
@@ -187,14 +208,16 @@ async def _wait_and_deliver(
                         )
                         return
 
-                    file = discord.File(
-                        io.BytesIO(payload), filename=f"yhilbot-{session_id}{ext}"
-                    )
                     content = (
                         f"<@{interaction.user.id}> ✓ Готово — рендер з "
                         f"[веб-редактора]({editor_url})."
                     )
-                    sent = await _notify(interaction, content=content, file=file)
+                    sent = await _notify(
+                        interaction,
+                        content=content,
+                        payload=payload,
+                        filename=f"yhilbot-{session_id}{ext}",
+                    )
                     if not sent:
                         # Обидва канали (channel.send + followup.send) впали —
                         # типово через розмір файлу >25MB або інші HTTP помилки.
