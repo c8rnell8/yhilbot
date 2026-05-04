@@ -166,16 +166,28 @@ async def _notify(
 async def _wait_and_deliver(
     interaction: discord.Interaction, session_id: str, editor_url: str
 ) -> None:
-    """Поллим сайт, при готовности постим результат в канал.
+    """Поллим сайт, при каждом завершённом рендере постим результат в канал.
+
+    The site now exposes a monotonic `renderGen` counter on the session,
+    which ticks on every successful render completion. We track the last
+    generation we delivered so that a single /webedit session can produce
+    multiple renders — user iterates in the web editor and each click on
+    "Готово" sends a fresh result message into the channel.
+
+    We keep polling until `WEB_EDITOR_TIMEOUT_SEC` elapses, the session is
+    explicitly closed, or a render transitions to `failed`. The timer is
+    idle-based: it resets whenever a new render finishes, so long editing
+    sessions don't get cut off mid-iteration.
 
     Wrapped in a top-level try/except — это fire-and-forget таска,
-    необроблені виключення тут просто логуються, бо повертати їх немає кому
-    (interaction вже відповіли вище).
+    необроблені виключення тут просто логуються.
     """
     timeout = aiohttp.ClientTimeout(total=config.WEB_EDITOR_TIMEOUT_SEC + 60)
     started = time.time()
     deadline = started + config.WEB_EDITOR_TIMEOUT_SEC
     last_status: str | None = None
+    last_gen: int = 0
+    last_render_failed_gen: int = -1
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -192,13 +204,15 @@ async def _wait_and_deliver(
                     log.info("webedit:status session=%s status=%s", session_id, status)
                     last_status = status
 
-                if status == "rendered":
+                gen = int(data.get("renderGen") or 0)
+
+                if status == "rendered" and gen > last_gen:
                     output = data.get("output") or {}
                     ext = output.get("ext") or ".mp4"
                     try:
                         payload = await _download_output(session, session_id)
                     except Exception as e:
-                        log.error("webedit:download_failed session=%s err=%s", session_id, e)
+                        log.error("webedit:download_failed session=%s gen=%s err=%s", session_id, gen, e)
                         await _notify(
                             interaction,
                             content=(
@@ -206,25 +220,28 @@ async def _wait_and_deliver(
                                 f"[веб-редактора]({editor_url}) не вдалося завантажити: {e}"
                             ),
                         )
-                        return
+                        last_gen = gen
+                        # Reset idle deadline so user has full window to try again.
+                        deadline = time.time() + config.WEB_EDITOR_TIMEOUT_SEC
+                        await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
+                        continue
 
+                    prefix = "✓ Готово" if last_gen == 0 else f"↻ Новий рендер (#{gen})"
                     content = (
-                        f"<@{interaction.user.id}> ✓ Готово — рендер з "
+                        f"<@{interaction.user.id}> {prefix} — з "
                         f"[веб-редактора]({editor_url})."
                     )
                     sent = await _notify(
                         interaction,
                         content=content,
                         payload=payload,
-                        filename=f"yhilbot-{session_id}{ext}",
+                        filename=f"yhilbot-{session_id}-v{gen}{ext}",
                     )
                     if not sent:
-                        # Обидва канали (channel.send + followup.send) впали —
-                        # типово через розмір файлу >25MB або інші HTTP помилки.
-                        # Кидаємо просто текстове повідомлення з download-лінкою.
                         log.warning(
-                            "webedit:send_with_file_failed_fallback_to_link session=%s",
+                            "webedit:send_with_file_failed_fallback_to_link session=%s gen=%s",
                             session_id,
+                            gen,
                         )
                         download_url = (
                             f"{config.WEB_EDITOR_URL}/api/editor/sessions/{session_id}/output?dl=1"
@@ -232,33 +249,49 @@ async def _wait_and_deliver(
                         await _notify(
                             interaction,
                             content=(
-                                f"<@{interaction.user.id}> ✓ Готово, але файл завеликий "
+                                f"<@{interaction.user.id}> {prefix}, але файл завеликий "
                                 f"для каналу. Завантаж напряму: {download_url}"
                             ),
                         )
-                    return
+                    last_gen = gen
+                    # Idle-based deadline: extend to full window on each new render.
+                    deadline = time.time() + config.WEB_EDITOR_TIMEOUT_SEC
 
-                if status == "failed":
+                elif status == "failed" and gen > last_render_failed_gen:
+                    # A render attempt failed. Tell the user but keep polling —
+                    # they may try again in the editor. Note: render.ts only
+                    # bumps renderGen on success, so a failed render increments
+                    # updatedAt without bumping gen. We trigger once per status
+                    # transition by tracking the bump we alerted on.
                     err = data.get("error") or "unknown"
                     await _notify(
                         interaction,
                         content=(
                             f"<@{interaction.user.id}> ❌ Рендер з "
                             f"[веб-редактора]({editor_url}) впав: `{str(err)[:300]}`"
+                            f"\nМожеш спробувати ще раз там же, я почекаю."
                         ),
                     )
-                    return
+                    last_render_failed_gen = gen
 
                 await asyncio.sleep(config.WEB_EDITOR_POLL_SEC)
 
-            # ── Таймаут на повний рендер (>30 хв за замовч.) ─────────────────
-            await _notify(
-                interaction,
-                content=(
-                    f"<@{interaction.user.id}> ⏱ Час очікування рендера вийшов "
+            # ── Таймаут idle (>WEB_EDITOR_TIMEOUT_SEC с моменту останнього рендера) ─
+            if last_gen == 0:
+                tail = (
+                    f"⏱ Час очікування рендера вийшов "
                     f"({config.WEB_EDITOR_TIMEOUT_SEC}s). "
                     f"Якщо ще не натиснув «Готово» — натисни тут: {editor_url}"
-                ),
+                )
+            else:
+                tail = (
+                    f"⏱ Сесія веб-редактора закрита через неактивність "
+                    f"(отримано {last_gen} рендер(ів)). "
+                    f"Хочеш ще — виклич /webedit знову."
+                )
+            await _notify(
+                interaction,
+                content=f"<@{interaction.user.id}> {tail}",
             )
     except Exception as e:
         # Останній рубіж захисту: ніколи не пропускаємо у asyncio "Task exception was never retrieved".
