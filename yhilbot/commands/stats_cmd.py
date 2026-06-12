@@ -43,7 +43,7 @@ async def stats_cmd(interaction: discord.Interaction) -> None:
         proc = psutil.Process(os.getpid())
         cpu_pct = f"{proc.cpu_percent(interval=None):.1f}%"
         mem_mb = f"{proc.memory_info().rss / 1024**2:.1f} МБ"
-        disk = psutil.disk_usage("/")
+        disk = psutil.disk_usage(os.path.abspath(os.sep))
         disk_str = f"{disk.used/1024**3:.1f}/{disk.total/1024**3:.1f} ГБ ({disk.percent}%)"
     except Exception:
         pass

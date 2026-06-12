@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import os
 import shutil
 import signal
@@ -50,11 +51,15 @@ async def on_ready() -> None:
     )
 
 
-async def _async_shutdown() -> None:
-    log.info("shutting down...")
+_cleaned_up = False
+
+
+def _sync_cleanup() -> None:
+    global _cleaned_up
+    if _cleaned_up:
+        return
+    _cleaned_up = True
     for _mid, sess in list(active_sessions.items()):
-        if sess.render_task and not sess.render_task.done():
-            sess.cancel_flag.set()
         if sess.input_path and os.path.exists(sess.input_path):
             try:
                 os.remove(sess.input_path)
@@ -63,6 +68,14 @@ async def _async_shutdown() -> None:
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR, ignore_errors=True)
     db_shutdown()
+
+
+async def _async_shutdown() -> None:
+    log.info("shutting down...")
+    for _mid, sess in list(active_sessions.items()):
+        if sess.render_task and not sess.render_task.done():
+            sess.cancel_flag.set()
+    _sync_cleanup()
     try:
         await client.close()
     except Exception:
@@ -70,10 +83,18 @@ async def _async_shutdown() -> None:
 
 
 def install_signal_handlers() -> None:
-    loop = asyncio.get_event_loop()
+    # discord.py closes the client itself on Ctrl-C / SIGTERM (it owns the
+    # event loop). We just make sure temp files and the db get cleaned up when
+    # the interpreter exits - this works on both Windows and Linux. Where a
+    # running loop is available (Unix), also hook the signals for a tidier
+    # async shutdown.
+    atexit.register(_sync_cleanup)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(sig, lambda: asyncio.create_task(_async_shutdown()))
         except (NotImplementedError, RuntimeError):
-            # Windows / loop not running yet - fall back to a sync handler.
-            signal.signal(sig, lambda *_: asyncio.run(_async_shutdown()))
+            pass

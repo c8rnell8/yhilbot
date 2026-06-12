@@ -13,6 +13,8 @@ _IMPACT_CANDIDATES = [
     "/usr/share/fonts/TTF/impact.ttf",
     "/usr/share/fonts/impact.ttf",
     "/usr/local/share/fonts/impact.ttf",
+    r"C:\Windows\Fonts\impact.ttf",
+    r"C:\Windows\Fonts\arialbd.ttf",
 ]
 
 IMPACT_FONT_PATH: str | None = next((p for p in _IMPACT_CANDIDATES if os.path.exists(p)), None)
@@ -34,6 +36,8 @@ _FALLBACK_FONTS = [
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    r"C:\Windows\Fonts\arialbd.ttf",
+    r"C:\Windows\Fonts\segoeuib.ttf",
 ]
 
 
