@@ -1,0 +1,39 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: ruff check
+        run: ruff check yhilbot bot.py
+
+  import-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y ffmpeg
+          pip install -r requirements.txt
+      - name: Smoke import
+        env:
+          DISCORD_TOKEN: dummy_token_for_import_only
+          OWNER_ID: "0"
+        run: |
+          # Make sure the package imports cleanly. bot.py can't run on CI
+          # (it would start the Discord client), so import the package only.
+          python -c "import yhilbot, yhilbot.editor, yhilbot.commands"

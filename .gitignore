@@ -1,0 +1,47 @@
+# Secrets / env
+yhil.env
+.env
+*.env
+!yhil.env.example
+!*.env.example
+
+# Logs
+*.log
+bot.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Bot work dir / cache (TEMP_DIR defaults to /tmp/yhil_work, but just in case)
+yhil_work/
+render_cache/
+gif_cache/
+editor.db
+editor.db-wal
+editor.db-shm
+
+# Misc
+*.bak
+*.tmp

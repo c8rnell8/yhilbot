@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
+ignore = [
+    "E501",    # line-too-long: SQL and ffmpeg strings get long
+    "E701",    # multiple statements on one line (try: ... except: ... style)
+    "E702",    # multiple statements on one line (semicolon)
+    "B008",    # function-call-in-default-argument (asyncio.Lock() dataclass field)
+    "ASYNC240", # os.path.* in async - fine here, these are quick stat calls
+    "ASYNC230", # open() in async - same, the files are tiny
+    "ASYNC110", # while True: await sleep - the queue_wait/cleanup_loop pattern
+]
+
+[tool.ruff.lint.per-file-ignores]
+"bot.py" = ["F401"]  # entry point may import for side effects
