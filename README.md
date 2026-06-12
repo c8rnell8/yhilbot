@@ -1,7 +1,7 @@
 # yhilbot
 
 A Discord bot for media editing: GIF/WebP conversion, meme captions over images,
-and a QUAD video editor with an ffmpeg-based timeline.
+and a video editor with an ffmpeg-based timeline.
 
 ## Commands
 
