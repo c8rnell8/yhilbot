@@ -31,6 +31,11 @@ CACHE_TTL_SEC: int = int(os.getenv("CACHE_TTL_SEC", "7200"))
 # Gemini for /ai - free key from https://aistudio.google.com/apikey
 GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
 
+# Browser editor on the site (/webedit). Token must equal the site's
+# YHILBOT_API_TOKEN.
+WEB_EDITOR_URL: str = os.getenv("WEB_EDITOR_URL", "")
+WEB_EDITOR_TOKEN: str | None = os.getenv("WEB_EDITOR_TOKEN")
+
 # Set once in on_ready after probing `ffmpeg -encoders`.
 GPU_AVAILABLE: bool = False
 
