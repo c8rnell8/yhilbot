@@ -28,6 +28,9 @@ EDITOR_TIMEOUT_SEC: int = int(os.getenv("EDITOR_TIMEOUT_SEC", "900"))
 CLEANUP_INTERVAL_SEC: int = int(os.getenv("CLEANUP_INTERVAL_SEC", "120"))
 CACHE_TTL_SEC: int = int(os.getenv("CACHE_TTL_SEC", "7200"))
 
+# Gemini for /ai - free key from https://aistudio.google.com/apikey
+GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+
 # Set once in on_ready after probing `ffmpeg -encoders`.
 GPU_AVAILABLE: bool = False
 
