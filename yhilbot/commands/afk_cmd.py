@@ -7,12 +7,12 @@ from ..client import tree
 @tree.command(name="afkconfig", description="Налаштувати авто-AFK роль (тільки власник)")
 @discord.app_commands.describe(
     role="Роль, яку видавати неактивним",
-    days="Скільки днів без активності = AFK (за замовчуванням 30)",
+    time="Період без активності: 30s, 15m, 12h, 30d, 2w, 3months (або просто число = дні)",
 )
 async def afkconfig_cmd(
     interaction: discord.Interaction,
     role: discord.Role,
-    days: int = 30,
+    time: str = "30d",
 ) -> None:
     if interaction.user.id != config.OWNER_ID:
         await interaction.response.send_message("❌ Тільки для власника.", ephemeral=True)
@@ -20,7 +20,15 @@ async def afkconfig_cmd(
     if not interaction.guild:
         await interaction.response.send_message("Лише на сервері.", ephemeral=True)
         return
-    days = max(1, min(365, days))
+
+    seconds = afk.parse_duration(time)
+    if seconds is None:
+        await interaction.response.send_message(
+            "Не зрозумів період. Приклади: `30s`, `15m`, `12h`, `30d`, `2w`, `3months`.",
+            ephemeral=True,
+        )
+        return
+    seconds = max(60, min(365 * 86400, seconds))
 
     me = interaction.guild.me
     if not me.guild_permissions.manage_roles:
@@ -35,9 +43,9 @@ async def afkconfig_cmd(
         )
         return
 
-    await afk.set_config(interaction.guild.id, role.id, days * 86400, True)
+    await afk.set_config(interaction.guild.id, role.id, seconds, True)
     await interaction.response.send_message(
-        f"✅ Авто-AFK увімкнено. Роль {role.mention} видаватиметься після **{days} дн.** без активності "
+        f"✅ Авто-AFK увімкнено. Роль {role.mention} видаватиметься після **{afk.format_duration(seconds)}** без активності "
         f"(повідомлення, реакції чи войс знімають її автоматично).",
         ephemeral=True,
     )

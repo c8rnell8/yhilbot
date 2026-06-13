@@ -10,6 +10,7 @@ Discord Developer Portal → Bot). Without it the member scan can't run.
 """
 
 import asyncio
+import re
 import time
 
 import discord
@@ -138,13 +139,40 @@ def inactivity_seconds(guild_id: int, user_id: int) -> float:
 
 
 def format_duration(sec: float) -> str:
-    """'13 д' up to a month, then '1 м, 13 д'."""
+    """'13 д' up to a month, then '1 м, 13 д'. Sub-day shows hours/minutes."""
+    if sec < 3600:
+        return f"{int(sec // 60)} хв"
+    if sec < 86400:
+        return f"{int(sec // 3600)} год"
     days = int(sec // 86400)
     if days <= 30:
         return f"{days} д"
     months = days // 30
     rem = days % 30
     return f"{months} м, {rem} д"
+
+
+_UNIT_SEC = {"mo": 2592000, "w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
+
+
+def parse_duration(text: str) -> int | None:
+    """Turn '30d', '2w', '3months', '12h', '45m', '90s' (and combos like
+    '1w2d') into seconds. A bare number means days. Returns None if unparsable.
+    Note: m = minutes, months/mo = months."""
+    t = text.strip().lower().replace(" ", "")
+    if not t:
+        return None
+    if t.isdigit():
+        return int(t) * 86400
+    t = t.replace("months", "mo").replace("month", "mo").replace("mon", "mo")
+    # 'mo' must be tried before 'm' so months aren't read as minutes.
+    matches = re.findall(r"(\d+)(mo|w|d|h|m|s)", t)
+    if not matches:
+        return None
+    # reject leftover junk (e.g. "30x")
+    if "".join(n + u for n, u in matches) != t:
+        return None
+    return sum(int(n) * _UNIT_SEC[u] for n, u in matches)
 
 
 # ---- events ---------------------------------------------------------------
