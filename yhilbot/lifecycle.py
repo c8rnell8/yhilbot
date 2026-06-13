@@ -7,7 +7,7 @@ import signal
 import discord
 import psutil
 
-from . import config
+from . import afk, config
 from .client import client, tree
 from .editor.cleanup import start_cleanup
 from .editor.db import init_db
@@ -27,6 +27,8 @@ async def on_ready() -> None:
 
     start_cleanup()
     await init_db()
+    await afk.init_afk()
+    afk.start()
 
     try:
         if config.GUILD_IDS:
